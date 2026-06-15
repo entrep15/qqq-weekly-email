@@ -188,7 +188,10 @@ def send_email(subject, text, html):
 # --------------------------------------------------------------------------- #
 def main():
     now = datetime.now(PACIFIC)
-    force = os.environ.get("FORCE_SEND") == "1"
+    force = (
+        os.environ.get("FORCE_SEND") == "1"
+        or os.environ.get("EVENT_NAME") == "workflow_dispatch"
+    )
 
     # Time guard: GitHub cron is UTC and DST-unaware, so the workflow fires at
     # two UTC times year-round; only the one that lands on 6 AM Pacific proceeds.
