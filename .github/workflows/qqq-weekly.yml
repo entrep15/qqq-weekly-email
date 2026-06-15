@@ -1,0 +1,38 @@
+name: QQQ Top 10 Weekly Email
+
+on:
+  schedule:
+    # GitHub cron is UTC and has no DST awareness. 6:05 AM Pacific is 13:05 UTC
+    # during PDT (summer) and 14:05 UTC during PST (winter). We fire on BOTH;
+    # qqq_email.py only proceeds when it is actually the 6 AM hour in Pacific,
+    # so exactly one of the two runs sends each Friday year-round.
+    - cron: "5 13 * * 5"   # Fridays 13:05 UTC -> 6:05 AM PDT
+    - cron: "5 14 * * 5"   # Fridays 14:05 UTC -> 6:05 AM PST
+  workflow_dispatch:        # allow manual "Run workflow" (always sends)
+
+concurrency:
+  group: qqq-weekly
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch holdings and send email
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          # Manual runs bypass the 6 AM Pacific guard so you can test anytime.
+          FORCE_SEND: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: python qqq_email.py
