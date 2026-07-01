@@ -146,14 +146,18 @@ def parse_dashboard(ws):
                     break
             continue
 
-        # Category rows: name in col, followed by total / completed / remaining ints.
-        if current and row and row[0] in CATEGORIES:
-            nums = [as_int(c) for c in row[1:] if as_int(c) is not None]
-            if len(nums) >= 3:
-                total, completed, remaining = nums[0], nums[1], nums[2]
-                parts[current]["cats"].append(
-                    (row[0], total, completed, remaining)
-                )
+        # Category rows: a category name in some column, followed by
+        # total / completed / remaining ints. The sheet has a leading blank
+        # column, so scan for the name rather than assuming column 0.
+        if current:
+            idx = next((k for k, c in enumerate(row) if c in CATEGORIES), None)
+            if idx is not None:
+                nums = [as_int(c) for c in row[idx + 1:] if as_int(c) is not None]
+                if len(nums) >= 3:
+                    total, completed, remaining = nums[0], nums[1], nums[2]
+                    parts[current]["cats"].append(
+                        (row[idx], total, completed, remaining)
+                    )
 
     return {"parts": parts, "deadline": deadline, "target": target}
 
