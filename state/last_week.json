@@ -1,5 +1,5 @@
 {
-  "date": "2026-06-26",
+  "date": "2026-07-03",
   "tickers": [
     "NVDA",
     "AAPL",
@@ -7,9 +7,9 @@
     "MSFT",
     "AMZN",
     "AMD",
-    "GOOGL",
     "TSLA",
+    "GOOGL",
     "GOOG",
-    "INTC"
+    "META"
   ]
 }
