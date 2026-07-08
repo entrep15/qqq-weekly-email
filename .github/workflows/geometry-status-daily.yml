@@ -2,12 +2,20 @@ name: Geometry Sprint Daily Status
 
 on:
   schedule:
-    # GitHub cron is UTC and DST-unaware. 6:00 PM Pacific is 01:00 UTC during PDT
-    # (summer) and 02:00 UTC during PST (winter). We fire on BOTH; geometry_status.py
-    # only proceeds when it is actually the 6 PM hour in Pacific, so exactly one of
-    # the two runs sends each day year-round.
-    - cron: "0 1 * * *"
-    - cron: "0 2 * * *"
+    # GitHub cron is UTC, DST-unaware, and frequently delayed by hours, especially
+    # at the top of the hour. So we fire several times each evening at an off-peak
+    # minute; geometry_status.py sends on the first run that is at/after 6 PM
+    # Pacific and hasn't already sent today (tracked in state/geometry_last_sent.txt),
+    # so exactly one email goes out per day even when a trigger is badly delayed.
+    #   6 PM PDT = 01:00 UTC   ·   6 PM PST = 02:00 UTC
+    # Covering 01:26–07:26 UTC gives 6 PM–past-11 PM Pacific worth of retries.
+    - cron: "26 1 * * *"
+    - cron: "26 2 * * *"
+    - cron: "26 3 * * *"
+    - cron: "26 4 * * *"
+    - cron: "26 5 * * *"
+    - cron: "26 6 * * *"
+    - cron: "26 7 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,7 +24,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write  # to commit the once-per-day state file back
 
 jobs:
   send:
@@ -40,3 +48,17 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
         run: python geometry_status.py
+
+      - name: Persist once-per-day send marker
+        if: success() && github.event_name == 'schedule'
+        run: |
+          if [[ -n "$(git status --porcelain state/geometry_last_sent.txt)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state/geometry_last_sent.txt
+            git commit -m "Geometry status sent [skip ci]"
+            git push
+            echo "Send marker committed."
+          else
+            echo "No send marker change to commit."
+          fi

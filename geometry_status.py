@@ -13,8 +13,12 @@ Environment variables:
   GEOMETRY_SHEET_URL      - full URL that returns the workbook as .xlsx
                             (e.g. https://docs.google.com/spreadsheets/d/<id>/export?format=xlsx)
   DRY_RUN=1               - parse and print the email, but do NOT send
-  FORCE_SEND=1            - bypass the 6 PM Pacific time guard
+  FORCE_SEND=1            - bypass the time/once-per-day guard (send now)
   EVENT_NAME              - GitHub event name; "workflow_dispatch" also bypasses the guard
+
+Scheduled runs send once per Pacific day, on the first run at/after 6 PM Pacific
+(GitHub delays scheduled crons by hours, so multiple evening crons + a committed
+state file, state/geometry_last_sent.txt, guarantee exactly one delivery).
 """
 
 import io
@@ -25,6 +29,7 @@ import sys
 from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
@@ -32,6 +37,8 @@ import openpyxl
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 CATEGORIES = ("Quizzes", "Tests", "Assignments", "Final Exam")
+SEND_HOUR = 18  # 6 PM Pacific; sends at this hour or later, once per Pacific day.
+STATE_FILE = Path(__file__).with_name("state") / "geometry_last_sent.txt"
 
 # Fallbacks used only if the corresponding text can't be found in the sheet.
 DEFAULT_DEADLINE = date(2026, 8, 2)
@@ -366,23 +373,45 @@ def send_email(subject, text, html):
 
 
 # --------------------------------------------------------------------------- #
+# Once-per-day state                                                           #
+# --------------------------------------------------------------------------- #
+def already_sent_today(today_str):
+    try:
+        return STATE_FILE.read_text().strip() == today_str
+    except FileNotFoundError:
+        return False
+
+
+def mark_sent_today(today_str):
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(today_str + "\n")
+
+
+# --------------------------------------------------------------------------- #
 # Main                                                                         #
 # --------------------------------------------------------------------------- #
 def main():
     now = datetime.now(PACIFIC)
     today = now.date()
+    today_str = today.isoformat()
     dry_run = os.environ.get("DRY_RUN") == "1"
-    force = (
+    manual = (
         os.environ.get("FORCE_SEND") == "1"
         or os.environ.get("EVENT_NAME") == "workflow_dispatch"
-        or dry_run
     )
+    force = manual or dry_run
 
-    # GitHub cron is UTC and DST-unaware, so the workflow fires at two UTC times
-    # year-round; only the one that lands in the 6 PM Pacific hour proceeds.
-    if not force and now.hour != 18:
-        print(f"Skipping: Pacific time is {now:%H:%M %Z}, not the 6 PM window.")
-        return 0
+    # Scheduled runs: GitHub's cron is UTC, DST-unaware, and frequently delayed by
+    # hours. So instead of demanding an exact hour, we fire several times through
+    # the evening and send on the FIRST run that is at/after 6 PM Pacific and
+    # hasn't already sent today. The committed state file makes it exactly-once.
+    if not force:
+        if now.hour < SEND_HOUR:
+            print(f"Skipping: Pacific time is {now:%H:%M %Z}, before the 6 PM window.")
+            return 0
+        if already_sent_today(today_str):
+            print(f"Skipping: already sent today ({today_str}).")
+            return 0
 
     url = os.environ["GEOMETRY_SHEET_URL"]
     wb = fetch_workbook(url)
@@ -404,6 +433,11 @@ def main():
         return 0
 
     send_email(subject, text, html)
+
+    # Record the send so the evening's remaining cron fires skip. Manual
+    # dispatches don't touch state, so they never suppress the scheduled email.
+    if not manual:
+        mark_sent_today(today_str)
     return 0
 
 
