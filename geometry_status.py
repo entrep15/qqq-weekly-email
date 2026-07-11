@@ -254,7 +254,7 @@ def _part_line(cats):
     return done, total, remaining
 
 
-def render(dash, day_label, tasks, today):
+def render(dash, day_label, tasks, today, stamp=None):
     parts = dash["parts"]
     deadline = dash["deadline"] or DEFAULT_DEADLINE
     target = dash["target"] or DEFAULT_TARGET
@@ -273,6 +273,8 @@ def render(dash, day_label, tasks, today):
     lines = [f"Geometry Sprint Plan — status for {today.strftime('%A, %B %d, %Y')}", ""]
     lines.append(f"Deadline: {deadline.strftime('%b %d, %Y')}  ({days_left} days left)")
     lines.append(f"Target to finish: {target.strftime('%b %d, %Y')}")
+    if stamp:
+        lines.append(f"Sheet snapshot taken: {stamp}")
     lines.append("")
     for pnum, label in ((1, "Part 1"), (2, "Part 2")):
         p = parts[pnum]
@@ -335,6 +337,7 @@ def render(dash, day_label, tasks, today):
     Deadline <b>{deadline.strftime('%b %d, %Y')}</b> ({days_left} days left)
     · target to finish <b>{target.strftime('%b %d, %Y')}</b>
   </div>
+  {f'<div style="color:#999;font-size:12px;margin-top:2px">Sheet snapshot taken {stamp}</div>' if stamp else ''}
   {part_block(1, "Part 1")}
   {part_block(2, "Part 2")}
   <h3 style="margin:16px 0 4px">Today's checklist</h3>
@@ -424,7 +427,8 @@ def main():
     chk_ws = find_checklist(wb)
     day_label, tasks = parse_checklist_today(chk_ws, today) if chk_ws else (None, [])
 
-    subject, text, html = render(dash, day_label, tasks, today)
+    stamp = now.strftime("%a %b %-d, %-I:%M %p %Z")
+    subject, text, html = render(dash, day_label, tasks, today, stamp=stamp)
     print("SUBJECT:", subject)
     print(text)
 
